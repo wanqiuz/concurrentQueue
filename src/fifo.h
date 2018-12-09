@@ -1,42 +1,106 @@
 #ifndef FIFO_H
 #define FIFO_H
 
-// struct kfifo {
-//     unsigned char *buffer;
-//     unsigned int size;
-//     unsigned int in;
-//     unsigned int out;
-// }
 #include <assert.h>
 #include <mutex>
+#include <iostream>
+#include <queue>
 
+template<class T>
 class Fifo {
 public:
-    Fifo(unsigned int size ) {
-        assert(isPowerOf2(size));
+    Fifo();
 
-        buffer = new unsigned char[size];
-        this->size = size;
-        this->in = 0;
-        this->out = 0;
-    }
+    T front();
+    T back();
+    void pop();
+    bool tryPop();
+    void push(const T &value);
+    void push(T &&value);
+    template<class... Args>
+    void emplace(Args&&... args);
 
-    void reset();
-    unsigned int length();
-    unsigned int put(unsigned char *buffer, unsigned int length);
-    unsigned int get(unsigned char *buffer, unsigned int length);
+    size_t size() const;
+    bool empty() const;
 
 private:
-    static bool isPowerOf2(unsigned long n) {
-        return (n != 0 && (n & (n - 1)) == 0);
-    }
-private:
-    unsigned char *buffer;
-    unsigned int size;
-    unsigned int in;
-    unsigned int out;
+    std::queue<T> queue;
 
     std::mutex mtx;
+    std::condition_variable notEmpty;
+    std::condition_variable notFull;
 };
+
+template<class T>
+Fifo<T>::Fifo(): queue() {
+}
+
+template<class T>
+T Fifo<T>::front() {
+    std::unique_lock<std::mutex> lock(mtx);
+    notEmpty.wait(lock, [this]() {return !this->queue.empty();});
+    return queue.front();
+}
+
+template<class T>
+T Fifo<T>::back() {
+    std::unique_lock<std::mutex> lock(mtx);
+    notEmpty.wait(lock, [this]() {return !this->queue.empty();});
+    return queue.back();
+}
+
+template<class T>
+void Fifo<T>::pop() {
+    std::unique_lock<std::mutex> lock(mtx);
+    notEmpty.wait(lock, [this]() {return !this->queue.empty();});
+    queue.pop();
+}
+
+template<class T>
+bool Fifo<T>::tryPop() {
+    std::unique_lock<std::mutex> lock(mtx);
+    if (this->queue.empty())
+        return false;
+    queue.pop();
+    return true;
+}
+
+template<class T>
+void Fifo<T>::push(const T &value) {
+    std::unique_lock<std::mutex> lock(mtx);
+    queue.push(value);
+    notEmpty.notify_one();
+}
+
+template<class T>
+void Fifo<T>::push(T &&value) {
+    std::unique_lock<std::mutex> lock(mtx);
+    queue.push(std::forward<T>(value));
+    notEmpty.notify_one();
+}
+
+template<class T>
+template<class... Args>
+void Fifo<T>::emplace(Args&&... args) {
+    std::unique_lock<std::mutex> lock(mtx);
+    queue.emplace(std::forward<Args>(args) ...);
+    notEmpty.notify_one();
+}
+
+
+template<class T>
+size_t Fifo<T>::size() const {
+    std::unique_lock<std::mutex> lock(mtx);
+    return queue.size();
+}
+
+template<class T>
+bool Fifo<T>::empty() const {
+    std::unique_lock<std::mutex> lock(mtx);
+    return queue.empty();
+}
+
+
+
 
 #endif

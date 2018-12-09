@@ -1,6 +1,7 @@
 
 CC:= g++
-CFLAGS= -g -Wall -std=c++11
+# CFLAGS= -g -Wall -std=c++11 -fno-elide-constructors
+CFLAGS= -g -Wall -std=c++11 -fno-elide-constructors
 INC:= -I./src -I./test
 
 BUILD_DIR:= ./build
